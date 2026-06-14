@@ -1,0 +1,46 @@
+[Unit]
+Description=Face Authentication Daemon
+After=network.target
+
+[Service]
+Type=simple
+ExecStart=/usr/bin/faceunlockd
+Restart=on-failure
+RestartSec=5
+
+# Logging
+StandardOutput=journal
+StandardError=journal
+SyslogIdentifier=faceunlockd
+
+# Security hardening
+NoNewPrivileges=yes
+ProtectSystem=strict
+ProtectHome=yes
+ReadWritePaths=/run/faceunlockd /var/lib/faceunlock /var/log/faceunlock.log
+PrivateTmp=yes
+PrivateDevices=no
+ProtectKernelTunables=yes
+ProtectKernelModules=yes
+ProtectControlGroups=yes
+RestrictNamespaces=yes
+RestrictRealtime=yes
+RestrictSUIDSGID=yes
+MemoryDenyWriteExecute=yes
+LockPersonality=yes
+SystemCallArchitectures=native
+
+# Capabilities
+AmbientCapabilities=CAP_SYS_ADMIN CAP_DAC_READ_SEARCH
+CapabilityBoundingSet=CAP_SYS_ADMIN CAP_DAC_READ_SEARCH
+
+# User/group
+User=root
+Group=faceunlock
+
+# Socket directory
+RuntimeDirectory=faceunlockd
+RuntimeDirectoryMode=0770
+
+[Install]
+WantedBy=multi-user.target

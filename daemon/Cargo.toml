@@ -1,0 +1,21 @@
+[package]
+name = "faceunlockd"
+version = "0.1.0"
+edition = "2021"
+
+[dependencies]
+ort = { version = "2.0.0-rc.12", features = ["download-binaries"] }
+v4l = "0.14"
+image = "0.25"
+imageproc = "0.25"
+ndarray = "0.17"
+serde = { version = "1", features = ["derive"] }
+serde_json = "1"
+toml = "0.8"
+anyhow = "1"
+tracing = "0.1"
+tracing-subscriber = { version = "0.3", features = ["env-filter"] }
+tracing-appender = "0.2"
+tokio = { version = "1", features = ["full"] }
+chrono = "0.4"
+base64 = "0.22"

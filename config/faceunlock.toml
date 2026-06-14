@@ -1,0 +1,40 @@
+# faceunlockd configuration file
+# Primary path: /etc/faceunlock/faceunlock.toml
+# Fallback: /etc/faceunlock.toml
+
+# Log level: trace, debug, info, warn, error
+log_level = "info"
+
+[camera]
+# V4L2 device path for the IR camera
+# Use `faceunlock-enroll discover` to list available devices
+device = "/dev/video2"
+# Capture resolution (must be supported by the camera)
+width = 640
+height = 360
+# Optional: force a specific pixel format (GREY, Y8, MJPEG)
+# If omitted, the daemon negotiates: GREY → Y8 → MJPEG
+# pixel_format = "GREY"
+
+[models]
+# Path to SCRFD face detection ONNX model
+# Options: det_500m (fast), det_2.5g (balanced), det_10g (accurate)
+detector = "/usr/share/faceunlock/models/det_500m.onnx"
+# Path to AdaFace IR-50 face recognition ONNX model
+recognizer = "/usr/share/faceunlock/models/adaface_ir50.onnx"
+
+[auth]
+# Cosine similarity threshold for face matching (0.0–1.0)
+similarity_threshold = 0.40
+# Maximum number of capture frames to attempt per auth request
+max_frames = 10
+# Minimum standard deviation for IR liveness check
+liveness_threshold = 0.15
+# SCRFD face detection confidence threshold (0.0–1.0)
+detection_threshold = 0.5
+# Camera warmup frames before auth (auto-exposure settle)
+camera_warmup = 3
+
+[enrollment]
+# Directory where user embedding files are stored
+store_path = "/var/lib/faceunlock/embeddings"
