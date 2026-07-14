@@ -51,7 +51,10 @@ impl Detector {
         let (resized, pad_x, pad_y, scale) =
             letterbox_resize(frame_data, frame_w, frame_h, model_size);
 
-        let grey: Vec<f32> = resized.iter().map(|&p| (p as f32 - 127.5) / 128.0).collect();
+        let grey: Vec<f32> = resized
+            .iter()
+            .map(|&p| (p as f32 - 127.5) / 128.0)
+            .collect();
 
         let mut input = Array4::<f32>::zeros((1, 3, model_size as usize, model_size as usize));
         for y in 0..model_size as usize {
@@ -70,7 +73,8 @@ impl Detector {
 
         let outputs = self.session.run(ort::inputs![input_tensor])?;
 
-        let (faces, landmarks, confidences) = parse_scrfd_outputs(&outputs, self.confidence_threshold)?;
+        let (faces, landmarks, confidences) =
+            parse_scrfd_outputs(&outputs, self.confidence_threshold)?;
 
         let mut best: Option<DetectedFace> = None;
         let mut best_area = 0.0f32;
@@ -92,7 +96,14 @@ impl Detector {
         }
 
         if let Some(ref face) = best {
-            tracing::debug!("Face detected: bbox=({:.1},{:.1},{:.1},{:.1}) conf={:.3}", face.bbox.x, face.bbox.y, face.bbox.w, face.bbox.h, face.confidence);
+            tracing::debug!(
+                "Face detected: bbox=({:.1},{:.1},{:.1},{:.1}) conf={:.3}",
+                face.bbox.x,
+                face.bbox.y,
+                face.bbox.w,
+                face.bbox.h,
+                face.confidence
+            );
         }
 
         if let Some(mut face) = best {
@@ -113,12 +124,7 @@ impl Detector {
     }
 }
 
-fn letterbox_resize(
-    data: &[u8],
-    src_w: u32,
-    src_h: u32,
-    target: u32,
-) -> (Vec<u8>, f32, f32, f32) {
+fn letterbox_resize(data: &[u8], src_w: u32, src_h: u32, target: u32) -> (Vec<u8>, f32, f32, f32) {
     let scale = target as f32 / src_w.max(src_h) as f32;
     let new_w = (src_w as f32 * scale) as u32;
     let new_h = (src_h as f32 * scale) as u32;
@@ -129,12 +135,8 @@ fn letterbox_resize(
 
     let img = image::ImageBuffer::<image::Luma<u8>, _>::from_raw(src_w, src_h, data)
         .expect("Failed to create image buffer");
-    let resized = image::imageops::resize(
-        &img,
-        new_w,
-        new_h,
-        image::imageops::FilterType::Lanczos3,
-    );
+    let resized =
+        image::imageops::resize(&img, new_w, new_h, image::imageops::FilterType::Lanczos3);
 
     for y in 0..new_h {
         for x in 0..new_w {
@@ -228,11 +230,26 @@ fn parse_scrfd_outputs(
 
             let kps_base = anchor_idx * 10;
             landmarks.push([
-                Point2D { x: cx + kps_data[kps_base] * stride, y: cy + kps_data[kps_base + 1] * stride },
-                Point2D { x: cx + kps_data[kps_base + 2] * stride, y: cy + kps_data[kps_base + 3] * stride },
-                Point2D { x: cx + kps_data[kps_base + 4] * stride, y: cy + kps_data[kps_base + 5] * stride },
-                Point2D { x: cx + kps_data[kps_base + 6] * stride, y: cy + kps_data[kps_base + 7] * stride },
-                Point2D { x: cx + kps_data[kps_base + 8] * stride, y: cy + kps_data[kps_base + 9] * stride },
+                Point2D {
+                    x: cx + kps_data[kps_base] * stride,
+                    y: cy + kps_data[kps_base + 1] * stride,
+                },
+                Point2D {
+                    x: cx + kps_data[kps_base + 2] * stride,
+                    y: cy + kps_data[kps_base + 3] * stride,
+                },
+                Point2D {
+                    x: cx + kps_data[kps_base + 4] * stride,
+                    y: cy + kps_data[kps_base + 5] * stride,
+                },
+                Point2D {
+                    x: cx + kps_data[kps_base + 6] * stride,
+                    y: cy + kps_data[kps_base + 7] * stride,
+                },
+                Point2D {
+                    x: cx + kps_data[kps_base + 8] * stride,
+                    y: cy + kps_data[kps_base + 9] * stride,
+                },
             ]);
 
             confidences.push(score);

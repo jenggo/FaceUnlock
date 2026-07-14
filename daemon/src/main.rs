@@ -41,7 +41,10 @@ impl MaxSizeWriter {
             .append(true)
             .open(path)
             .expect("Failed to open log file");
-        Self { file: Mutex::new(file), max_bytes }
+        Self {
+            file: Mutex::new(file),
+            max_bytes,
+        }
     }
 }
 
@@ -68,7 +71,9 @@ async fn main() -> Result<()> {
     let (non_blocking, _guard) = non_blocking(writer);
 
     tracing_subscriber::registry()
-        .with(EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&config.log_level)))
+        .with(
+            EnvFilter::try_from_default_env().unwrap_or_else(|_| EnvFilter::new(&config.log_level)),
+        )
         .with(
             tracing_subscriber::fmt::layer()
                 .with_writer(non_blocking)
@@ -80,7 +85,8 @@ async fn main() -> Result<()> {
     tracing::info!("Starting faceunlockd");
     tracing::info!("Config loaded from disk");
 
-    let _detector = detect::Detector::new(&config.models.detector, config.auth.detection_threshold)?;
+    let _detector =
+        detect::Detector::new(&config.models.detector, config.auth.detection_threshold)?;
     tracing::info!("Detector model loaded: {}", config.models.detector);
 
     let _recognizer = recognize::Recognizer::new(&config.models.recognizer)?;

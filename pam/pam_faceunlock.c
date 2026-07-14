@@ -1,11 +1,13 @@
 #include <stdio.h>
 #include <stdlib.h>
 #include <string.h>
+#include <syslog.h>
 #include <unistd.h>
 #include <sys/socket.h>
 #include <sys/un.h>
 #include <sys/time.h>
 #include <security/pam_modules.h>
+#include <security/pam_ext.h>
 #include <json-c/json.h>
 
 #define SOCKET_PATH "/run/faceunlockd/auth.sock"
@@ -114,6 +116,39 @@ PAM_EXTERN int pam_sm_authenticate(pam_handle_t *pamh, int flags, int argc, cons
 
     if (strcmp(result, "ok") == 0) {
         auth_result = PAM_SUCCESS;
+    } else {
+        /* Check for structured reason_code */
+        json_object *reason_code_obj;
+        const char *reason_code = NULL;
+        if (json_object_object_get_ex(resp, "reason_code", &reason_code_obj)) {
+            reason_code = json_object_get_string(reason_code_obj);
+        }
+
+        const char *message = NULL;
+        if (reason_code) {
+            if (strcmp(reason_code, "camera_blocked") == 0) {
+                message = "Face unlock failed: camera appears blocked. Open the lid or privacy shutter.";
+            } else if (strcmp(reason_code, "no_face") == 0) {
+                message = "Face unlock failed: no face detected.";
+            } else if (strcmp(reason_code, "score_below_threshold") == 0) {
+                message = "Face unlock failed: face not recognized.";
+            }
+        }
+
+        if (message) {
+            pam_error(pamh, "%s", message);
+        } else {
+            /* Fallback: use free-text reason for diagnostics */
+            json_object *reason_obj;
+            const char *reason = NULL;
+            if (json_object_object_get_ex(resp, "reason", &reason_obj)) {
+                reason = json_object_get_string(reason_obj);
+            }
+            pam_error(pamh, "Face unlock failed.");
+            if (reason) {
+                pam_syslog(pamh, LOG_ERR, "faceunlock reason: %s", reason);
+            }
+        }
     }
 
     json_object_put(resp);

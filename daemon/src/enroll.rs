@@ -1,20 +1,41 @@
 use anyhow::{Context, Result};
+use std::collections::HashMap;
 use std::fs;
 use std::io::{Read, Write};
 use std::path::PathBuf;
 
+use crate::recognize::ModelType;
+
 const EMBEDDING_DIM: usize = 512;
-const MAX_EMBEDDINGS: usize = 5;
 const BYTES_PER_EMBEDDING: usize = EMBEDDING_DIM * 4;
 
 pub struct EnrollmentStore {
     store_path: PathBuf,
+    max_embeddings: usize,
+}
+
+impl ModelType {
+    pub fn suffix(&self) -> &'static str {
+        match self {
+            ModelType::ArcFace => "_arcface",
+            ModelType::AdaFace => "_adaface",
+        }
+    }
+
+    pub fn from_suffix(suffix: &str) -> Option<Self> {
+        match suffix {
+            "_arcface" => Some(ModelType::ArcFace),
+            "_adaface" => Some(ModelType::AdaFace),
+            _ => None,
+        }
+    }
 }
 
 impl EnrollmentStore {
-    pub fn new(store_path: &str) -> Self {
+    pub fn new(store_path: &str, max_embeddings: usize) -> Self {
         Self {
             store_path: PathBuf::from(store_path),
+            max_embeddings,
         }
     }
 
@@ -29,7 +50,6 @@ impl EnrollmentStore {
                 let perms = fs::Permissions::from_mode(0o770);
                 fs::set_permissions(&self.store_path, perms)?;
 
-                // Try to set ownership (requires root)
                 let _ = std::process::Command::new("chown")
                     .args(["root:faceunlock", self.store_path.to_str().unwrap()])
                     .output();
@@ -38,8 +58,8 @@ impl EnrollmentStore {
         Ok(())
     }
 
-    pub fn load_embeddings(&self, username: &str) -> Result<Vec<Vec<f32>>> {
-        let path = self.user_path(username);
+    pub fn load_embeddings(&self, username: &str, model_type: ModelType) -> Result<Vec<Vec<f32>>> {
+        let path = self.user_path(username, model_type);
         if !path.exists() {
             return Ok(Vec::new());
         }
@@ -52,12 +72,12 @@ impl EnrollmentStore {
             .context("Failed to read embedding count")?;
         let count = u32::from_le_bytes(count_bytes) as usize;
 
-        if count > MAX_EMBEDDINGS {
+        if count > self.max_embeddings {
             anyhow::bail!(
                 "Invalid embedding count {} in file {:?} (max {})",
                 count,
                 path,
-                MAX_EMBEDDINGS
+                self.max_embeddings
             );
         }
 
@@ -78,7 +98,12 @@ impl EnrollmentStore {
         Ok(embeddings)
     }
 
-    pub fn save_embedding(&self, username: &str, embedding: &[f32]) -> Result<()> {
+    pub fn save_embedding(
+        &self,
+        username: &str,
+        embedding: &[f32],
+        model_type: ModelType,
+    ) -> Result<()> {
         self.ensure_store_dir()?;
 
         if embedding.len() != EMBEDDING_DIM {
@@ -89,10 +114,10 @@ impl EnrollmentStore {
             );
         }
 
-        let path = self.user_path(username);
-        let mut embeddings = self.load_embeddings(username)?;
+        let path = self.user_path(username, model_type);
+        let mut embeddings = self.load_embeddings(username, model_type)?;
 
-        if embeddings.len() >= MAX_EMBEDDINGS {
+        if embeddings.len() >= self.max_embeddings {
             embeddings.remove(0);
         }
 
@@ -127,19 +152,21 @@ impl EnrollmentStore {
     }
 
     pub fn clear_embeddings(&self, username: &str) -> Result<()> {
-        let path = self.user_path(username);
-        if path.exists() {
-            fs::remove_file(&path)
-                .with_context(|| format!("Failed to delete embedding file: {:?}", path))?;
+        for model_type in &[ModelType::ArcFace, ModelType::AdaFace] {
+            let path = self.user_path(username, *model_type);
+            if path.exists() {
+                fs::remove_file(&path)
+                    .with_context(|| format!("Failed to delete embedding file: {:?}", path))?;
+            }
         }
         Ok(())
     }
 
-    pub fn list_users(&self) -> Result<Vec<(String, usize)>> {
-        let mut users = Vec::new();
+    pub fn list_users(&self) -> Result<Vec<(String, Vec<(ModelType, usize)>)>> {
+        let mut users: HashMap<String, Vec<(ModelType, usize)>> = HashMap::new();
 
         if !self.store_path.exists() {
-            return Ok(users);
+            return Ok(Vec::new());
         }
 
         for entry in fs::read_dir(&self.store_path)
@@ -148,24 +175,49 @@ impl EnrollmentStore {
             let entry = entry?;
             let path = entry.path();
 
-            if path.extension().and_then(|e| e.to_str()) == Some("bin") {
-                let username = path
-                    .file_stem()
-                    .and_then(|s| s.to_str())
-                    .unwrap_or("unknown")
-                    .to_string();
+            if path.extension().and_then(|e| e.to_str()) != Some("bin") {
+                continue;
+            }
 
-                if let Ok(embeddings) = self.load_embeddings(&username) {
-                    users.push((username, embeddings.len()));
+            let stem = path
+                .file_stem()
+                .and_then(|s| s.to_str())
+                .unwrap_or("unknown")
+                .to_string();
+
+            if let Some((username, model_type)) = parse_embedding_filename(&stem) {
+                if let Ok(embeddings) = self.load_embeddings(&username, model_type) {
+                    users
+                        .entry(username)
+                        .or_default()
+                        .push((model_type, embeddings.len()));
                 }
             }
         }
 
-        users.sort_by(|a, b| a.0.cmp(&b.0));
-        Ok(users)
+        let mut result: Vec<_> = users.into_iter().collect();
+        result.sort_by(|a, b| a.0.cmp(&b.0));
+        Ok(result)
     }
 
-    fn user_path(&self, username: &str) -> PathBuf {
-        self.store_path.join(format!("{}.bin", username))
+    fn user_path(&self, username: &str, model_type: ModelType) -> PathBuf {
+        self.store_path
+            .join(format!("{}{}.bin", username, model_type.suffix()))
     }
+}
+
+fn parse_embedding_filename(stem: &str) -> Option<(String, ModelType)> {
+    for suffix in &["_arcface", "_adaface"] {
+        if let Some(username) = stem.strip_suffix(suffix) {
+            if !username.is_empty() {
+                return Some((username.to_string(), ModelType::from_suffix(suffix)?));
+            }
+        }
+    }
+
+    if !stem.is_empty() {
+        return Some((stem.to_string(), ModelType::ArcFace));
+    }
+
+    None
 }

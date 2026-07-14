@@ -114,13 +114,14 @@ fn cmd_list(user: Option<&str>) -> Result<()> {
         return Ok(());
     }
 
-    println!("{:<20} {}", "Username", "Embeddings");
-    println!("{}", "-".repeat(32));
+    println!("{:<20} {:>10} {:>10}", "Username", "ArcFace", "AdaFace");
+    println!("{}", "-".repeat(44));
 
     for u in users {
         let username = u["username"].as_str().unwrap_or("unknown");
-        let count = u["embedding_count"].as_u64().unwrap_or(0);
-        println!("{:<20} {}", username, count);
+        let arcface = u["arcface_count"].as_u64().unwrap_or(0);
+        let adaface = u["adaface_count"].as_u64().unwrap_or(0);
+        println!("{:<20} {:>10} {:>10}", username, arcface, adaface);
     }
 
     Ok(())

@@ -20,8 +20,8 @@ height = 360
 # Path to SCRFD face detection ONNX model
 # Options: det_500m (fast), det_2.5g (balanced), det_10g (accurate)
 detector = "/usr/share/faceunlock/models/det_500m.onnx"
-# Path to AdaFace IR-50 face recognition ONNX model
-recognizer = "/usr/share/faceunlock/models/adaface_ir50.onnx"
+# Path to ArcFace R50 face recognition ONNX model
+recognizer = "/usr/share/faceunlock/models/w600k_r50.onnx"
 
 [auth]
 # Cosine similarity threshold for face matching (0.0–1.0)
@@ -32,9 +32,29 @@ max_frames = 10
 liveness_threshold = 0.15
 # SCRFD face detection confidence threshold (0.0–1.0)
 detection_threshold = 0.5
-# Camera warmup frames before auth (auto-exposure settle)
-camera_warmup = 3
+# Maximum frames to wait for stable exposure before proceeding to face detection
+# (default 15 frames × 100 ms = up to 1.5 s for slow-adjusting sensors)
+camera_warmup = 15
+# Delay between readiness check frames in ms (helps sensor stabilize after suspend/resume)
+camera_warmup_delay_ms = 100
+# Mean luma below this is treated as black/blocked (0-255)
+camera_warmup_mean_threshold = 10.0
+# |Δmean| below this is considered exposure-stable
+camera_warmup_delta_threshold = 8.0
+# Minimum luma standard deviation for a frame to be considered textured.
+# During AE/AF convergence variance is low; once it rises above this the sensor has settled.
+camera_warmup_std_threshold = 2.0
+# Number of consecutive stable frames required before the camera is considered ready
+camera_warmup_stable_frames = 2
+
+# --- Reactive settling (triggered after a failed detection attempt) ---
+# Delay between settling-check frames in ms (default 500ms = ~2 fps check rate)
+camera_settle_delay_ms = 500
+# Maximum settling-check frames before giving up and resuming detection anyway (default 10 = ~5s)
+camera_settle_max_frames = 10
 
 [enrollment]
 # Directory where user embedding files are stored
 store_path = "/var/lib/faceunlock/embeddings"
+# Maximum embeddings stored per user (oldest evicted on overflow)
+max_embeddings = 5

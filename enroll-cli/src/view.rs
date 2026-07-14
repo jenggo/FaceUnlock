@@ -9,6 +9,10 @@ const WINDOW_TITLE: &str = "FaceUnlock View — press ESC to close";
 const COLOR_GREEN: u32 = 0x00FF00;
 const COLOR_RED: u32 = 0xFF0000;
 const COLOR_WHITE: u32 = 0xFFFFFF;
+const COLOR_AMBER: u32 = 0xFFAA00;
+const COLOR_SLATE: u32 = 0x999999;
+const BAR_BG: u32 = 0x222222;
+const BAR_HEIGHT: usize = 16;
 
 struct BBox {
     x: f32,
@@ -109,7 +113,19 @@ pub fn run_view(socket_path: &str, user: &str) -> Result<()> {
 
             let authenticated = face["authenticated"].as_bool().unwrap_or(false);
             let score = face["score"].as_f64().unwrap_or(0.0);
-            let bbox_color = if authenticated { COLOR_GREEN } else { COLOR_RED };
+            let liveness = msg.get("liveness");
+            let liveness_failed = liveness
+                .map(|l| !l["is_live"].as_bool().unwrap_or(true))
+                .unwrap_or(false);
+            let reason = msg["reason"].as_str().unwrap_or("");
+
+            let bbox_color = if authenticated {
+                COLOR_GREEN
+            } else if liveness_failed {
+                COLOR_AMBER
+            } else {
+                COLOR_RED
+            };
 
             draw_bbox(&mut buffer, width, height, &bbox, bbox_color);
 
@@ -121,9 +137,16 @@ pub fn run_view(socket_path: &str, user: &str) -> Result<()> {
                 }
             }
 
-            let conf = face["confidence"].as_f64().unwrap_or(0.0);
             let label = if authenticated {
                 format!("PASS {:.0}%", score * 100.0)
+            } else if liveness_failed {
+                let ir_mean = liveness
+                    .and_then(|l| l["ir_mean"].as_f64())
+                    .unwrap_or(0.0);
+                let ir_std = liveness
+                    .and_then(|l| l["ir_std"].as_f64())
+                    .unwrap_or(0.0);
+                format!("LIVENESS FAIL m={:.0} s={:.0}", ir_mean, ir_std)
             } else {
                 format!("FAIL {:.0}%", score * 100.0)
             };
@@ -137,6 +160,21 @@ pub fn run_view(socket_path: &str, user: &str) -> Result<()> {
                 bbox_color,
             );
 
+            let conf = face["confidence"].as_f64().unwrap_or(0.0);
+
+            // Show detailed reason below bbox when failing.
+            if !authenticated && !reason.is_empty() {
+                draw_text_label(
+                    &mut buffer,
+                    width,
+                    height,
+                    bbox.x as i32,
+                    (bbox.y + bbox.h + 14.0) as i32,
+                    reason,
+                    bbox_color,
+                );
+            }
+
             let det_label = format!("det:{:.0}%", conf * 100.0);
             draw_text_label(
                 &mut buffer,
@@ -148,6 +186,22 @@ pub fn run_view(socket_path: &str, user: &str) -> Result<()> {
                 COLOR_WHITE,
             );
         }
+
+        // Bottom debug status bar — driven by daemon's `status` + `status_kind` fields.
+        let status_text = msg["status"].as_str().unwrap_or("");
+        let status_kind = msg["status_kind"].as_str().unwrap_or("");
+        let bar_color = match status_kind {
+            "blocked" => COLOR_RED,
+            "ready" => {
+                // ready may be augmented with "PASS"/"FAIL" by the daemon when a face was found.
+                if status_text.contains("PASS") { COLOR_GREEN }
+                else if status_text.contains("FAIL") { COLOR_AMBER }
+                else { COLOR_SLATE }
+            }
+            "black" | "unstable" => COLOR_AMBER,
+            _ => COLOR_SLATE,
+        };
+        draw_status_bar(&mut buffer, width, height, status_text, bar_color);
 
         window.update_with_buffer(&buffer, width, height)?;
 
@@ -240,6 +294,20 @@ fn draw_text_label(buffer: &mut [u32], width: usize, height: usize, x: i32, y: i
     }
 }
 
+fn draw_status_bar(buffer: &mut [u32], width: usize, height: usize, text: &str, color: u32) {
+    let bar_y = height.saturating_sub(BAR_HEIGHT);
+    // Background strip.
+    for y in bar_y..height {
+        for x in 0..width {
+            buffer[y * width + x] = BAR_BG;
+        }
+    }
+    // Text (baseline 3px from top of bar, 5px left margin).
+    if !text.is_empty() {
+        draw_text_label(buffer, width, height, 5, (bar_y as i32) + 3, text, color);
+    }
+}
+
 fn get_glyph(ch: char) -> [u8; 7] {
     match ch {
         '0' => [0b01110, 0b10001, 0b10011, 0b10101, 0b11001, 0b10001, 0b01110],
@@ -309,6 +377,12 @@ fn get_glyph(ch: char) -> [u8; 7] {
         ' ' => [0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000],
         ':' => [0b00000, 0b00100, 0b00000, 0b00000, 0b00000, 0b00100, 0b00000],
         '-' => [0b00000, 0b00000, 0b00000, 0b11111, 0b00000, 0b00000, 0b00000],
+        '_' => [0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b11111],
+        '|' => [0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100, 0b00100],
+        '/' => [0b00001, 0b00010, 0b00010, 0b00100, 0b01000, 0b01000, 0b10000],
+        '(' => [0b00010, 0b00100, 0b01000, 0b01000, 0b01000, 0b00100, 0b00010],
+        ')' => [0b01000, 0b00100, 0b00010, 0b00010, 0b00010, 0b00100, 0b01000],
+        '=' => [0b00000, 0b00000, 0b11111, 0b00000, 0b11111, 0b00000, 0b00000],
         _ => [0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000, 0b00000],
     }
 }
