@@ -338,7 +338,30 @@ async fn handle_authenticate(req: AuthRequest, config: &Config) -> AuthResponse 
         }
     };
 
-    // --- Phase 2: Face-acquire with reactive settling ---
+    // --- Phase 2: Blocked-camera gate ---
+    // Nothing downstream can succeed while the sensor sees no light, so fail fast
+    // with an actionable reason instead of spending the settle budget on black frames.
+    if let Some(reason) = camera.confirm_blocked(&acquire_frame, &readiness_config(config)) {
+        let total_ms = total_start.elapsed().as_millis() as u64;
+        tracing::warn!("{}", reason);
+        return AuthResponse {
+            result: "fail".to_string(),
+            reason: Some(reason),
+            reason_code: Some("camera_blocked".to_string()),
+            score: None,
+            ir_mean: None,
+            ir_std: None,
+            liveness: None,
+            users: None,
+            timing: Some(Timing {
+                detect_ms: 0,
+                recognize_ms: 0,
+                total_ms,
+            }),
+        };
+    }
+
+    // --- Phase 3: Face-acquire with reactive settling ---
     // Try detection on each frame. If detection fails on the first frame,
     // enter a settling phase: sample frames at ~500ms intervals and wait for
     // frame-to-frame deltas to drop (sensor converged), then resume detection.

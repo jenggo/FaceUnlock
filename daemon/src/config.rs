@@ -113,11 +113,11 @@ fn default_camera_warmup_stable_frames() -> u32 {
 }
 /// Delay between settling-check frames (ms) after a failed detection.
 fn default_camera_settle_delay_ms() -> u64 {
-    500
+    250
 }
 /// Maximum settling-check frames before giving up and resuming detection anyway.
 fn default_camera_settle_max_frames() -> u32 {
-    10
+    4
 }
 fn default_store_path() -> String {
     "/var/lib/faceunlock/embeddings".to_string()

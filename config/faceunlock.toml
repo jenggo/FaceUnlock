@@ -48,10 +48,10 @@ camera_warmup_std_threshold = 2.0
 camera_warmup_stable_frames = 2
 
 # --- Reactive settling (triggered after a failed detection attempt) ---
-# Delay between settling-check frames in ms (default 500ms = ~2 fps check rate)
-camera_settle_delay_ms = 500
-# Maximum settling-check frames before giving up and resuming detection anyway (default 10 = ~5s)
-camera_settle_max_frames = 10
+# Delay between settling-check frames in ms (default 250ms = ~4 fps check rate)
+camera_settle_delay_ms = 250
+# Maximum settling-check frames before giving up and resuming detection anyway (default 4 = ~1s)
+camera_settle_max_frames = 4
 
 [enrollment]
 # Directory where user embedding files are stored

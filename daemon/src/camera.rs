@@ -248,6 +248,37 @@ impl Camera {
         })
     }
 
+    /// Confirm that the camera cannot see anything at all.
+    ///
+    /// `first` is an already-captured frame; up to `BLACK_PATIENCE` frames in total
+    /// are sampled because the first frame after a stream starts is often black while
+    /// the sensor initialises. Returns the reason when every sampled frame is black,
+    /// or `None` as soon as one shows light.
+    pub fn confirm_blocked(&mut self, first: &RawFrame, config: &ReadinessConfig) -> Option<String> {
+        let mut delta_tracker = DeltaTracker::new();
+        let mut stats = PixelStats::compute(first);
+        let mut delta = delta_tracker.update(stats.mean);
+        let mut sampled = 1u32;
+
+        while classify_frame(stats.mean, delta, stats.std, config) == FrameClass::Black {
+            if sampled >= BLACK_PATIENCE {
+                return Some(format!(
+                    "Camera sees no light after {} frames (mean={:.1})",
+                    sampled, stats.mean
+                ));
+            }
+
+            let Ok(frame) = self.capture_frame() else {
+                return None;
+            };
+            stats = PixelStats::compute(&frame);
+            delta = delta_tracker.update(stats.mean);
+            sampled += 1;
+        }
+
+        None
+    }
+
     /// Camera-ready phase: capture frames, compute stats, wait for stable exposure.
     /// Returns `ReadinessResult::Ready` with the last stable frame once the stream has
     /// settled, or `Blocked` if the camera is permanently black or the budget is exhausted.
